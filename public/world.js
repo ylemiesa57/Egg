@@ -52,6 +52,7 @@
   const motes = [];
   let anchor = 0.6;
   let roll = null;
+  let pressure = 0; // 0–1 as the clock runs down
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -657,7 +658,12 @@
     ctx.fill();
     ctx.save();
     const bob = egg.rolling ? 0 : Math.sin(time * 2.2) * 1.5;
-    ctx.translate(x, y - hop + bob);
+    // nerves: the egg trembles and sweats as time runs out
+    const jit = reducedMotion ? 0 : pressure * 3;
+    if (pressure > 0.2 && Math.random() < pressure * 0.25) {
+      particles.push({ x: x + (Math.random() - 0.5) * R * 1.6, y: p.y - R * 1.9, vx: (Math.random() - 0.5) * 60, vy: -50, life: 1, decay: 1.8, size: 3, color: '#9fdcff' });
+    }
+    ctx.translate(x + (Math.random() - 0.5) * jit, y - hop + bob + (Math.random() - 0.5) * jit);
     ctx.rotate(egg.angle + (egg.mood === 'sad' ? Math.sin(time * 14) * 0.08 * egg.squash : 0));
     const sq = 1 + egg.squash * 0.16;
     ctx.scale(sq, 1 / sq);
@@ -813,6 +819,9 @@
   OE.world = {
     MAX,
     encounter() {},
+    pressure(p) {
+      pressure = p;
+    },
     stats: () => null,
     egg,
     setAnchor(a) {

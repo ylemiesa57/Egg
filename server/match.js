@@ -42,15 +42,17 @@ function levenshtein(a, b, max) {
   return prev[b.length];
 }
 
-// keys: Map<key, answerId>. Returns answerId or null.
+// keys: Map<key, answerId>. An exact hit (allowing plurals) is accepted outright;
+// a near miss comes back as a spelling suggestion for the player to confirm.
+// Returns { id, exact } or null.
 function findAnswer(keys, raw) {
   const k = key(raw);
   if (!k) return null;
   for (const v of variants(k)) {
-    if (keys.has(v)) return keys.get(v);
+    if (keys.has(v)) return { id: keys.get(v), exact: true };
   }
   // Typo tolerance scales with length; short words must be exact.
-  const max = k.length >= 10 ? 2 : k.length >= 5 ? 1 : 0;
+  const max = k.length >= 9 ? 3 : k.length >= 6 ? 2 : k.length >= 4 ? 1 : 0;
   if (!max) return null;
   let best = null;
   let bestDist = max + 1;
@@ -61,7 +63,7 @@ function findAnswer(keys, raw) {
       bestDist = d;
     }
   }
-  return best;
+  return best == null ? null : { id: best, exact: false };
 }
 
 module.exports = { norm, key, findAnswer };

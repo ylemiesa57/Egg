@@ -5,6 +5,8 @@
   const $ = (id) => document.getElementById(id);
 
   const SECONDS = 25;
+  const PENALTY = 3; // seconds lost for an answer that isn't on the list
+  const PANIC = 10; // seconds left when the pressure starts to build
   const TIERS = [
     { pts: 10, name: 'SHELL', color: '#e4dccb', emoji: '⚪', flavor: "Everyone's first crack at it." },
     { pts: 15, name: 'HALF-BAKED', color: '#d8b98a', emoji: '🟤', flavor: 'Felt clever. The whole carton thought so too.' },
@@ -34,6 +36,7 @@
         '25 seconds to name one thing.',
         'Your answer is your sword stroke: the rarer it is, the harder it hits.',
         'Hit for 60 or more and the dragon is slain. Less, and it only flies off.',
+        'A wrong guess costs 3 seconds. Run out of time and you get toasted.',
         'Every 100 points earns new gear: sword, helm, shield, cape, golden plate, flameblade.',
         'Reach 700 and you are crowned the Egg of Legend.',
       ],
@@ -102,11 +105,7 @@
 
   /* ---------- helpers ---------- */
 
-  async function api(path, body) {
-    const res = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
-    if (!res.ok) throw new Error(`${path} → ${res.status}`);
-    return res.json();
-  }
+  const api = OE.account.api;
 
   let toastTimer;
   function toast(text) {
@@ -131,8 +130,6 @@
   const dailyKey = () => `oe:daily:${game.number}`;
 
   async function boot() {
-    $('name').value = store.get('oe:name') || '';
-    $('name').addEventListener('change', () => store.set('oe:name', $('name').value.trim()));
     const title = TITLES[mode];
     $('tagline').textContent = title.tagline;
     if (title.pitch) $('pitch').textContent = title.pitch;
@@ -159,25 +156,44 @@
       })
     );
     try {
-      game = await api(`/api/game?mode=${apiMode}`);
+      [game] = await Promise.all([api(`/api/game?mode=${apiMode}`), OE.account.ready]);
     } catch {
       $('start').textContent = "Can't reach the kitchen";
       return;
     }
-    const start = $('start');
-    start.disabled = false;
-    const done = mode === 'daily' ? store.get(dailyKey()) : null;
     $('roll-number').textContent = title.number(game.number);
+    await offerStart();
+    // signing in on the title screen may reveal a roll already played today on another device
+    OE.account.onChange(() => {
+      if (state === 'title') location.reload();
+    });
+  }
+
+  // Today's roll, if this player has already played it: from their account, else from this browser.
+  async function playedToday() {
+    if (mode !== 'daily') return null;
+    if (OE.account.dailyRunId) {
+      try {
+        return await api(`/api/result?id=${OE.account.dailyRunId}`);
+      } catch {}
+    }
+    return store.get(dailyKey());
+  }
+
+  async function offerStart() {
+    const start = $('start');
+    const done = await playedToday();
+    start.disabled = false;
     if (done) {
       start.textContent = "See today's roll";
-      start.addEventListener('click', () => {
+      start.onclick = () => {
         $('title').hidden = true;
         world.jumpTo(done.score);
         showEnd(done);
-      });
+      };
     } else {
-      start.textContent = title.start;
-      start.addEventListener('click', startGame);
+      start.textContent = TITLES[mode].start;
+      start.onclick = startGame;
     }
   }
 
@@ -192,6 +208,8 @@
 
   /* ---------- prompt ---------- */
 
+  let lastBeat = 0;
+
   async function nextPrompt() {
     const p = game.prompts[idx];
     state = 'countdown';
@@ -203,32 +221,56 @@
     input.value = '';
     input.disabled = true;
     $('submit').disabled = true;
-    const fill = $('timer-fill');
-    fill.style.transform = 'scaleX(1)';
-    fill.classList.remove('low');
-    const hint = $('prompt-hint');
-    hint.classList.remove('bad');
+    $('timer-fill').style.transform = 'scaleX(1)';
+    $('timer-num').textContent = SECONDS;
+    setPressure(0, SECONDS);
+    setHint('');
     world.encounter(idx);
     for (let n = 3; n > 0; n--) {
-      hint.textContent = `the clock starts in ${n}`;
+      setHint(`the clock starts in ${n}`);
       beep(330, 0.05, 'sine', 0.04);
       await sleep(650);
     }
-    hint.textContent = COPY.hint;
+    setHint(COPY.hint);
     input.disabled = false;
     $('submit').disabled = false;
     input.focus();
     state = 'answering';
+    lastBeat = 0;
     deadline = performance.now() + SECONDS * 1000;
     requestAnimationFrame(tick);
   }
 
+  function setHint(text, bad) {
+    const hint = $('prompt-hint');
+    hint.textContent = text;
+    hint.classList.toggle('bad', !!bad);
+  }
+
+  // p runs 0 → 1 over the last PANIC seconds: the screen reddens, the card shakes, the world reacts
+  function setPressure(p, left) {
+    document.body.style.setProperty('--pressure', p.toFixed(3));
+    $('prompt').classList.toggle('panic', left < 5);
+    $('timer-fill').classList.toggle('low', left < PANIC);
+    $('timer-num').classList.toggle('low', left < PANIC);
+    world.pressure(p);
+  }
+
   function tick() {
     if (state !== 'answering' && state !== 'judging') return;
-    const left = (deadline - performance.now()) / 1000;
-    const fill = $('timer-fill');
-    fill.style.transform = `scaleX(${Math.max(0, left / SECONDS)})`;
-    fill.classList.toggle('low', left < 6);
+    const left = Math.max(0, (deadline - performance.now()) / 1000);
+    $('timer-fill').style.transform = `scaleX(${left / SECONDS})`;
+    $('timer-num').textContent = Math.ceil(left);
+    setPressure(left < PANIC ? 1 - left / PANIC : 0, left);
+    // a heartbeat that doubles its pace for the final five seconds
+    if (left < PANIC) {
+      const beat = Math.ceil(left * (left < 5 ? 2 : 1));
+      if (beat !== lastBeat) {
+        lastBeat = beat;
+        beep(left < 5 ? 110 : 82, 0.12, 'sine', 0.16);
+        beep(left < 5 ? 880 : 660, 0.04, 'square', 0.025);
+      }
+    }
     if (left <= 0 && state === 'answering') return timeUp();
     requestAnimationFrame(tick);
   }
@@ -248,9 +290,20 @@
     if (state !== 'judging') return;
     if (verdict && verdict.ok) return reveal(verdict, typed);
     state = 'answering';
-    const hint = $('prompt-hint');
-    hint.textContent = verdict ? "That's not in the cookbook. Try another." : 'The kitchen went quiet. Try again.';
-    hint.classList.add('bad');
+    if (verdict && verdict.suggest) {
+      // a near miss: put the corrected spelling in the box so Enter accepts it
+      input.value = verdict.suggest;
+      input.select();
+      setHint(`Did you mean “${verdict.suggest}”? Press Enter to use it.`);
+      beep(520, 0.08, 'sine', 0.05);
+      return;
+    }
+    if (verdict) {
+      deadline -= PENALTY * 1000;
+      setHint(`Not in the cookbook. −${PENALTY} seconds.`, true);
+    } else {
+      setHint('The kitchen went quiet. Try again.', true);
+    }
     input.classList.remove('shake');
     void input.offsetWidth;
     input.classList.add('shake');
@@ -260,6 +313,7 @@
 
   function timeUp() {
     state = 'reveal';
+    setPressure(0, SECONDS);
     picks.push({ promptId: game.prompts[idx].id, text: game.prompts[idx].text, answer: null, typed: '', pts: 0 });
     $('prompt').hidden = true;
     $('result').hidden = false;
@@ -272,19 +326,20 @@
 
   /* ---------- reveal ---------- */
 
-  function showVerdict(tier, said, gain, share) {
+  function showVerdict(tier, said, gain) {
     $('verdict').hidden = false;
     const name = $('tier-name');
     name.textContent = tier.name;
     name.style.setProperty('--tier', tier.color);
     $('said').textContent = said;
     $('gain').textContent = gain;
-    $('flavor').textContent = share != null ? `${tier.flavor} ${share}% of rollers said it.` : tier.flavor;
+    $('flavor').textContent = tier.flavor;
     $('next').hidden = true;
   }
 
   async function reveal(verdict, typed) {
     state = 'reveal';
+    setPressure(0, SECONDS);
     const tier = tierFor(verdict.pts);
     picks.push({ promptId: game.prompts[idx].id, text: game.prompts[idx].text, answer: verdict.answer, typed, pts: verdict.pts });
     $('prompt').hidden = true;
@@ -317,7 +372,7 @@
     await sleep(620);
 
     ladder.hidden = true;
-    showVerdict(tier, verdict.answer, COPY.gain(verdict.pts, metres(verdict.pts)), verdict.share);
+    showVerdict(tier, verdict.answer, COPY.gain(verdict.pts, metres(verdict.pts)));
     score += verdict.pts;
     await world.rollTo(score, {
       pts: verdict.pts,
@@ -352,16 +407,22 @@
   async function finish() {
     state = 'end';
     $('result').hidden = true;
-    const record = { number: game.number, score, picks, reveals: {}, standings: null, quest: world.stats() };
+    // if the server can't be reached the run still ends, just without comparisons
+    let record = {
+      number: game.number,
+      score,
+      picks,
+      reveals: {},
+      standings: null,
+      analysis: null,
+      quest: mode === 'quest' ? { slain: world.stats().slain } : null,
+    };
     try {
-      const res = await api('/api/run', {
-        mode: apiMode,
+      record = await api('/api/run', {
+        mode,
         number: game.number,
-        name: $('name').value.trim(),
         picks: picks.map((p) => ({ promptId: p.promptId, answer: p.typed })),
       });
-      record.reveals = res.reveals;
-      record.standings = res.standings;
     } catch {}
     if (mode === 'daily') store.set(dailyKey(), record);
     showEnd(record);
@@ -375,57 +436,12 @@
     $('end-form').textContent = OE.FORMS[form].name;
     $('end-score').textContent = record.score;
     $('end-dist').textContent = `${COPY.endDist(metres(record.score))} · ${OE.FORMS[form].blurb}`;
+    $('end-rank').textContent = record.quest ? `⚔ Dragons slain: ${record.quest.slain} of ${record.picks.length}` : '';
+    if (record.already) toast("You'd already played today — showing your saved roll");
 
-    const st = record.standings;
-    $('end-rank').textContent = record.quest
-      ? `⚔ Dragons slain: ${record.quest.slain} of ${record.picks.length}`
-      : !st
-      ? ''
-      : st.total <= 1
-        ? 'First egg down the hill today.'
-        : `Rolled further than ${Math.round((st.below / (st.total - 1)) * 100)}% of today's ${st.total} eggs.`;
-
-    $('recap').replaceChildren(
-      ...record.picks.map((p) => {
-        const tier = tierFor(p.pts);
-        const li = document.createElement('li');
-        li.style.setProperty('--tier', tier.color);
-        const add = (cls, text) => {
-          const el = document.createElement('span');
-          el.className = cls;
-          el.textContent = text;
-          li.append(el);
-          return el;
-        };
-        add('q', p.text);
-        add('a', p.answer || '—');
-        add('t', `${tier.name} · ${p.pts}`);
-        const golden = record.reveals[p.promptId]?.golden;
-        if (golden && p.pts !== 100) {
-          const g = add('g', 'Golden egg: ');
-          const b = document.createElement('b');
-          b.textContent = golden;
-          g.append(b);
-        }
-        return li;
-      })
-    );
-
-    const board = $('board');
-    board.hidden = !(st && st.top.length > 1);
-    if (!board.hidden) {
-      board.replaceChildren(
-        ...st.top.map((r) => {
-          const li = document.createElement('li');
-          const n = document.createElement('span');
-          n.textContent = r.name;
-          const s = document.createElement('span');
-          s.textContent = r.score;
-          li.append(n, s);
-          return li;
-        })
-      );
-    }
+    renderCompare(record);
+    renderRecap(record);
+    renderSave(record);
 
     const pc = $('portrait');
     const pctx = pc.getContext('2d');
@@ -445,10 +461,11 @@
 
     $('share').onclick = async () => {
       const title = mode === 'daily' ? `Eggvolution #${record.number}` : mode === 'quest' ? 'Eggvolution ⚔ Quest' : 'Eggvolution ∞';
+      const curve = record.analysis && record.analysis.curve;
       const text = [
         `${title} ${OE.FORMS[form].emoji} ${OE.FORMS[form].name}`,
         `${record.score}/700 · ${COPY.endDist(metres(record.score))}` + (record.quest ? ` · ${record.quest.slain} dragons slain` : ''),
-        record.picks.map((p) => tierFor(p.pts).emoji).join(''),
+        record.picks.map((p) => tierFor(p.pts).emoji).join('') + (curve ? ` · top ${Math.max(1, 100 - curve.percentile)}%` : ''),
         location.origin,
       ].join('\n');
       try {
@@ -456,6 +473,80 @@
         toast('Copied to clipboard');
       } catch {
         toast('Copy failed');
+      }
+    };
+  }
+
+  // The bell curve of everyone's totals, with this run marked on it.
+  function renderCompare(record) {
+    const curve = record.analysis && record.analysis.curve;
+    $('compare').hidden = !curve;
+    if (!curve) return;
+    OE.charts.scoreCurve($('curve'), curve, record.score);
+    const st = record.standings;
+    const today = st && st.total > 1 ? ` Today: ahead of ${st.below} of ${st.total - 1} other rolls.` : '';
+    $('compare-headline').textContent = `Better than about ${curve.percentile}% of games`;
+    $('compare-note').textContent =
+      (curve.n < 30
+        ? `An early estimate: only ${curve.n} ${curve.n === 1 ? 'game has' : 'games have'} been played in this mode, so the curve still leans on a starting guess.`
+        : `Fitted to ${curve.n.toLocaleString()} games in this mode.`) + today;
+  }
+
+  function renderRecap(record) {
+    const standings = (record.analysis && record.analysis.answers) || [];
+    $('recap').replaceChildren(
+      ...record.picks.map((p, i) => {
+        const tier = tierFor(p.pts);
+        const li = document.createElement('li');
+        li.style.setProperty('--tier', tier.color);
+        const add = (cls, text) => {
+          const el = document.createElement('span');
+          el.className = cls;
+          el.textContent = text;
+          li.append(el);
+          return el;
+        };
+        add('q', p.text);
+        add('a', p.answer || '—');
+        add('t', `${tier.name} · ${p.pts}`);
+        const st = standings[i];
+        if (st) {
+          const row = add('cmp', '');
+          row.append(OE.charts.tierBars(st.tiers, TIERS.indexOf(tier)));
+          const words = document.createElement('span');
+          words.textContent =
+            `Rarer than ${st.percentile}% of answers to this prompt` + (st.share != null ? ` · ${st.share}% gave this exact answer` : '');
+          row.append(words);
+        }
+        const golden = record.reveals[p.promptId] && record.reveals[p.promptId].golden;
+        if (golden && p.pts !== 100) {
+          const g = add('g', 'Golden egg: ');
+          const b = document.createElement('b');
+          b.textContent = golden;
+          g.append(b);
+        }
+        return li;
+      })
+    );
+  }
+
+  // Guests can attach the run they just played to an account.
+  function renderSave(record) {
+    const box = $('save');
+    // unlimited rolls aren't ranked, so there is nothing to save them to
+    const canClaim = mode !== 'unlimited' && !OE.account.user && record.runId && record.claim;
+    box.hidden = !canClaim;
+    if (!canClaim) return;
+    $('save-btn').onclick = async () => {
+      const user = await OE.account.openAuth('Sign in to put this score on the leaderboard.');
+      if (!user) return;
+      try {
+        const saved = await api('/api/claim', { runId: record.runId, claim: record.claim });
+        if (mode === 'daily') store.set(dailyKey(), saved);
+        box.hidden = true;
+        toast('Saved to the leaderboard');
+      } catch (err) {
+        $('save-note').textContent = err.message;
       }
     };
   }

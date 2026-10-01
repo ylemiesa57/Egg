@@ -39,6 +39,8 @@ Seven prompts, 25 seconds each. Every prompt asks you to name one thing — *a y
 
 A perfect game is 700.
 
+The clock is not gentle. In the last ten seconds a heartbeat starts, the screen reddens and the card rattles. A guess that isn't on the list costs three seconds. A guess that is only misspelled costs nothing: the game offers the corrected spelling ("Did you mean *therizinosaurus*?") and Enter accepts it.
+
 ## Three ways to play
 
 <table>
@@ -77,6 +79,17 @@ Seven lands, seven dragons, ending with Yolkscorch the Dragon King.
 </tr>
 </table>
 
+## Accounts, the curve and leaderboards
+
+You can play as a guest, or create an account (a username and password, nothing else) to keep your scores.
+
+- **How you compare.** Every finished game shows a bell curve of total scores with yours marked on it, and for each answer how it ranks against every answer given to that prompt, with a small chart of which tiers people land in.
+- **Leaderboards.** *Today* ranks the day's roll, *All-time* totals each player's daily rolls, and *Quest* ranks best quest scores. Only signed-in players appear.
+- **Play first, sign in after.** A guest who finishes a daily roll or a quest can sign in from the end screen and attach that run to their account.
+- **One daily roll per account**, enforced on the server, and visible from any device you sign in on.
+
+The curve is a normal distribution fitted to real games in that mode. While a mode has few games it leans on a starting guess (average 240, spread 90) that real results steadily outweigh, and the end screen says so.
+
 ## Run it locally
 
 ```sh
@@ -89,9 +102,9 @@ There is nothing to install: the project has no dependencies. It needs Node 22.1
 
 | Command | What it does |
 | --- | --- |
-| `npm start` | Seed the database and serve the game (set `PORT` to change the port) |
-| `npm test` | Run the answer-matching tests |
-| `npm run seed` | Re-sync `data/prompts/*.json` into the database |
+| `npm start` | Serve the game (set `PORT` to change the port) |
+| `npm test` | Run the matching and statistics tests |
+| `npm run seed` | Check `data/prompts/*.json` for problems |
 
 ## Tech stack
 
@@ -101,9 +114,12 @@ There is nothing to install: the project has no dependencies. It needs Node 22.1
 | Sound | [Web Audio API](https://developer.mozilla.org/docs/Web/API/Web_Audio_API) | Synthesised blips and chords |
 | Client | Vanilla [JavaScript](https://developer.mozilla.org/docs/Web/JavaScript), HTML, CSS | No framework, no build step |
 | Type | [Fredoka](https://fonts.google.com/specimen/Fredoka) | Display and UI text |
-| Server | [Node.js](https://nodejs.org) `http` | Static files and a three-route JSON API |
-| Database | [SQLite](https://www.sqlite.org) via [`node:sqlite`](https://nodejs.org/api/sqlite.html) | Prompts, ranked answers, lookup keys, scores |
-| Tests | [`node:test`](https://nodejs.org/api/test.html) | Answer matching |
+| Server | [Node.js](https://nodejs.org) `http` | Static files and a small JSON API |
+| Database | [SQLite](https://www.sqlite.org) via [`node:sqlite`](https://nodejs.org/api/sqlite.html) | Prompts and ranked answers (in memory); accounts, runs and statistics (a local file) |
+| Production database | [Turso](https://turso.tech) over its HTTP API | The same SQLite schema, hosted, when `TURSO_DATABASE_URL` is set |
+| Auth | [`node:crypto`](https://nodejs.org/api/crypto.html) | scrypt password hashes, hashed session tokens in an HttpOnly cookie |
+| Charts | Hand-written SVG | The score curve and tier bars |
+| Tests | [`node:test`](https://nodejs.org/api/test.html) | Answer matching and statistics |
 | Hosting | [Vercel](https://vercel.com) | Static hosting plus serverless functions |
 
 ## Prompts and rankings
@@ -122,35 +138,56 @@ The game ships with 65 prompts and about 2,700 ranked answers in `data/prompts/*
 }
 ```
 
-`alt` lists other accepted names. Matching already ignores case, accents, punctuation, spacing, leading articles and plurals, and forgives one typo in words of five or more letters (two in ten or more), so alternates are only needed for genuinely different names.
+`alt` lists other accepted names. Matching already ignores case, accents, punctuation, spacing, leading articles and plurals, and near-miss spellings are offered back as suggestions, so alternates are only needed for genuinely different names.
 
-The tiers are editorial judgement, not measured frequency. To improve a prompt, edit its JSON and run `npm run seed`. Answers that players type but the game does not recognise are logged to the `misses` table, which is the best source of what to add:
+The tiers are editorial judgement, not measured frequency. To improve a prompt, edit its JSON and restart the server (`npm run seed` reports any problems in the files). Answers that players type but the game does not recognise are logged to the `misses` table, which is the best source of what to add:
 
 ```sql
-SELECT p.text, m.raw, m.count FROM misses m JOIN prompts p ON p.id = m.prompt_id ORDER BY m.count DESC;
+SELECT prompt, raw, count FROM misses ORDER BY count DESC;
 ```
 
 ## Project layout
 
 ```
 api/            Vercel function entry points (each one hands off to server/index.js)
-data/prompts/   Prompt and answer seed files
+data/prompts/   Prompt and answer files
 public/
   eggs.js       The eight egg forms
   world.js      The downhill world (daily and unlimited)
   quest.js      The side-scrolling world, the armored hero and the dragons
-  game.js       Round flow, timer, reveal, end screen
+  charts.js     The score curve and tier bars
+  account.js    Sign-in and leaderboard dialogs
+  game.js       Round flow, timer and pressure, reveal, end screen
 server/
   index.js      HTTP server and API routes
-  db.js         Schema, seeding, queries
-  match.js      Answer normalisation and typo tolerance
+  db.js         Prompt content, loaded into memory
+  store.js      Player data: local SQLite file, or Turso in production
+  auth.js       Accounts and sessions
+  stats.js      The score curve and per-answer comparisons
+  match.js      Answer normalisation and spelling suggestions
 ```
 
 ## Deployment
 
-The live site runs on Vercel: `public/` is served statically and the three files in `api/` run as serverless functions.
+The live site runs on Vercel: `public/` is served statically and the files in `api/` run as serverless functions.
 
-One limitation to know about: serverless functions have no persistent disk, so on Vercel each function instance seeds its own in-memory database. Prompts and scoring work normally, but the daily leaderboard, pick statistics and the `misses` log reset whenever an instance is recycled. Running locally with `npm start` keeps everything in `data/eggvolution.db`. Persisting scores in production would mean pointing `server/db.js` at a hosted database.
+Serverless functions have no disk, so player data needs a hosted database. The server talks to [Turso](https://turso.tech) (hosted SQLite) when these two environment variables are set, and creates its tables on first use:
+
+| Variable | Value |
+| --- | --- |
+| `TURSO_DATABASE_URL` | `libsql://<database>.turso.io` |
+| `TURSO_AUTH_TOKEN` | A database token |
+
+The quickest way to get both is the Vercel Marketplace, which sets them on the project for you:
+
+```sh
+vercel integration add tursocloud/database
+vercel deploy --prod
+```
+
+Without them the game still plays, but accounts and leaderboards are switched off and the comparison charts only see games handled by the same function instance.
+
+Sessions last 30 days. There is no email on an account, so there is no password reset.
 
 ## Credits
 

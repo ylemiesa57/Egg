@@ -12,27 +12,33 @@ const keys = new Map([
   ['ps5', 7],
   ['blueberry', 8],
 ]);
+const exact = (id) => ({ id, exact: true });
+const suggest = (id) => ({ id, exact: false });
 
 test('normalises case, accents, punctuation, articles and spacing', () => {
   assert.equal(key("  The Buddha's-Hand "), 'buddhashand');
   assert.equal(key('Crème Brûlée'), 'cremebrulee');
-  assert.equal(findAnswer(keys, 'Yellow Dragon Fruit'), 2);
+  assert.deepEqual(findAnswer(keys, 'Yellow Dragon Fruit'), exact(2));
 });
 
-test('accepts plurals and singulars', () => {
-  assert.equal(findAnswer(keys, 'lemons'), 1);
-  assert.equal(findAnswer(keys, 'blueberries'), 8);
+test('accepts plurals and singulars outright', () => {
+  assert.deepEqual(findAnswer(keys, 'lemons'), exact(1));
+  assert.deepEqual(findAnswer(keys, 'blueberries'), exact(8));
 });
 
 test('exact matches win over near neighbours', () => {
-  assert.equal(findAnswer(keys, 'monet'), 4);
-  assert.equal(findAnswer(keys, 'manet'), 5);
-  assert.equal(findAnswer(keys, 'ps5'), 7);
+  assert.deepEqual(findAnswer(keys, 'monet'), exact(4));
+  assert.deepEqual(findAnswer(keys, 'manet'), exact(5));
+  assert.deepEqual(findAnswer(keys, 'ps5'), exact(7));
 });
 
-test('tolerates typos in longer words only', () => {
-  assert.equal(findAnswer(keys, 'yelow dragonfruit'), 2);
-  assert.equal(findAnswer(keys, 'blueberrry'), 8);
+test('misspellings come back as suggestions, not accepted answers', () => {
+  assert.deepEqual(findAnswer(keys, 'yelow dragonfriut'), suggest(2));
+  assert.deepEqual(findAnswer(keys, 'bluebery'), suggest(8));
+  assert.deepEqual(findAnswer(keys, 'lemmon'), suggest(1));
+});
+
+test('short or unrelated words get nothing', () => {
   assert.equal(findAnswer(keys, 'ps6'), null);
   assert.equal(findAnswer(keys, 'potato'), null);
   assert.equal(findAnswer(keys, '   '), null);

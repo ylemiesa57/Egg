@@ -1,6 +1,7 @@
-// Re-sync data/prompts/*.json into the database: `npm run seed`
-const { seed } = require('./db');
+// Validate data/prompts/*.json: `npm run seed`
+// (The server loads these files itself on every start; this just reports problems.)
+const { report } = require('./db');
 
-const report = seed();
-console.log(`Seeded ${report.prompts} prompts, ${report.answers} answers.`);
+console.log(`Loaded ${report.prompts} prompts, ${report.answers} answers.`);
 for (const p of report.problems) console.warn('  ! ' + p);
+if (report.problems.length) process.exitCode = 1;

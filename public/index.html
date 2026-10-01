@@ -13,6 +13,7 @@
 </head>
 <body>
   <canvas id="world" aria-hidden="true"></canvas>
+  <div id="danger" aria-hidden="true"></div>
 
   <header id="hud" hidden>
     <div class="hud-block">
@@ -43,13 +44,17 @@
             <li>Rare answers roll you far. Obvious ones barely budge.</li>
             <li>Every 100 points cooks you into a better egg: raw → hard-boiled → soft-boiled → poached → scrambled → omelette → fried.</li>
             <li>700 lands you sunny-side up in the Great Skillet.</li>
+            <li>A wrong guess costs 3 seconds. A near-miss spelling gets a suggestion instead.</li>
             <li>One roll per day. No do-overs.</li>
           </ul>
         </details>
-        <label class="name-field">
-          <span>Roller name</span>
-          <input id="name" type="text" maxlength="20" placeholder="anonymous egg" autocomplete="off">
-        </label>
+        <div class="account-row">
+          <span id="account-name">Playing as a guest</span>
+          <span class="account-actions">
+            <button type="button" class="chip-link" data-open-board>Leaderboard</button>
+            <button type="button" class="chip-link" id="account-action">Sign in</button>
+          </span>
+        </div>
         <button id="start" class="btn btn-big" type="button" disabled>Loading…</button>
         <div class="title-links">
           <span id="roll-number"></span>
@@ -66,7 +71,10 @@
                autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" disabled>
         <button class="btn" type="submit" id="submit" disabled>Roll</button>
       </form>
-      <div class="timer" role="timer" aria-label="Time left"><div id="timer-fill"></div></div>
+      <div class="timer-row">
+        <div class="timer" role="timer" aria-label="Time left"><div id="timer-fill"></div></div>
+        <span id="timer-num" aria-hidden="true">25</span>
+      </div>
       <p class="hint" id="prompt-hint">rarer answers roll further</p>
     </section>
 
@@ -88,21 +96,70 @@
         <h2 id="end-form"></h2>
         <p class="end-score"><b id="end-score"></b> / 700 · <span id="end-dist"></span></p>
         <p class="end-rank" id="end-rank"></p>
+        <section id="compare" class="compare" hidden>
+          <h3>How you compare</h3>
+          <p class="compare-headline" id="compare-headline"></p>
+          <div id="curve" class="curve"></div>
+          <p class="compare-note" id="compare-note"></p>
+        </section>
+        <h3 class="recap-title">Your answers</h3>
         <ol id="recap" class="recap"></ol>
+        <div id="save" class="save" hidden>
+          <p id="save-note">This score isn't on the leaderboard yet.</p>
+          <button id="save-btn" class="btn" type="button">Sign in to save it</button>
+        </div>
         <div class="end-actions">
           <button id="share" class="btn" type="button">Share</button>
+          <button class="btn btn-ghost" type="button" data-open-board>Leaderboard</button>
           <a id="again" class="btn btn-ghost" href="?mode=unlimited">Play unlimited ∞</a>
         </div>
-        <ol id="board" class="board" hidden></ol>
       </div>
     </section>
   </main>
+
+  <dialog id="auth" class="dialog" aria-labelledby="auth-title">
+    <button type="button" class="dialog-close" id="auth-close" aria-label="Close">×</button>
+    <h2 id="auth-title">Sign in</h2>
+    <p class="dialog-sub" id="auth-reason"></p>
+    <form id="auth-form">
+      <label>Username
+        <input id="auth-username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" minlength="3" maxlength="20" required>
+      </label>
+      <label>Password
+        <input id="auth-password" type="password" autocomplete="current-password" minlength="8" maxlength="200" required>
+      </label>
+      <p class="dialog-note" id="auth-note" hidden>3–20 letters, numbers, dashes or underscores. There is no password reset yet, so pick one you'll remember.</p>
+      <p class="dialog-error" id="auth-error" role="alert"></p>
+      <button class="btn" type="submit" id="auth-submit">Sign in</button>
+    </form>
+    <button type="button" class="link-btn" id="auth-switch">New here? Create an account</button>
+  </dialog>
+
+  <dialog id="board" class="dialog dialog-wide" aria-labelledby="board-title">
+    <button type="button" class="dialog-close" id="board-close" aria-label="Close">×</button>
+    <h2 id="board-title">Leaderboard</h2>
+    <div id="board-tabs" class="tabs" role="tablist">
+      <button type="button" role="tab" data-board="today">Today</button>
+      <button type="button" role="tab" data-board="alltime">All-time</button>
+      <button type="button" role="tab" data-board="quest">Quest</button>
+    </div>
+    <p class="dialog-sub" id="board-status"></p>
+    <div class="board-scroll">
+      <table class="board-table">
+        <thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col"></th><th scope="col" class="num" id="board-score-head">Score</th></tr></thead>
+        <tbody id="board-body"></tbody>
+      </table>
+    </div>
+    <p class="dialog-note" id="board-hint" hidden>Only signed-in players appear here. <button type="button" class="link-btn" id="board-signin">Sign in</button></p>
+  </dialog>
 
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="eggs.js"></script>
   <script src="world.js"></script>
   <script src="quest.js"></script>
+  <script src="charts.js"></script>
+  <script src="account.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

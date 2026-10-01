@@ -64,6 +64,7 @@
   let time = 0;
   let camX = 0;
   let shake = 0;
+  let pressure = 0; // 0–1 as the clock runs down
 
   const hero = { s: 0, mood: 'happy', soot: 0, swing: 0, stride: 0, moving: false, squash: 0 };
   let dragon = null;
@@ -504,6 +505,21 @@
     }
     ctx.restore();
     d.mouth = { x: x + (head.hx - 34) * d.scale, y: y + (head.hy + 6) * d.scale };
+    // as the clock runs down the dragon draws breath: fire gathers in its jaws
+    if (d.state === 'idle' && pressure > 0) {
+      const r = (14 + 46 * pressure) * d.scale * (0.9 + 0.1 * Math.sin(time * 18));
+      const glow = ctx.createRadialGradient(d.mouth.x, d.mouth.y, 1, d.mouth.x, d.mouth.y, r);
+      glow.addColorStop(0, `rgba(255, 240, 170, ${0.95 * pressure})`);
+      glow.addColorStop(0.4, `rgba(255, 150, 40, ${0.8 * pressure})`);
+      glow.addColorStop(1, 'rgba(255, 90, 20, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(d.mouth.x, d.mouth.y, r, 0, TAU);
+      ctx.fill();
+      if (Math.random() < pressure * 0.5) {
+        particles.push({ x: d.mouth.x + camX, y: d.mouth.y, vx: -40 - Math.random() * 90, vy: (Math.random() - 0.5) * 80, life: 1, decay: 2.2, size: 3 + Math.random() * 3, color: '#ffb02e', gravity: -40 });
+      }
+    }
 
     // name and health
     if (d.state === 'idle' || d.state === 'hit' || d.state === 'fire') {
@@ -1194,7 +1210,8 @@
     ctx.ellipse(wx - camX, gy + 8 * k, R * 0.9, R * 0.26, 0, 0, TAU);
     ctx.fill();
     ctx.save();
-    ctx.translate(wx - camX, gy - R * 1.02 - hop + (hero.moving ? 0 : Math.sin(time * 2.2) * 1.5));
+    const jit = reducedMotion ? 0 : pressure * 3;
+    ctx.translate(wx - camX + (Math.random() - 0.5) * jit, gy - R * 1.02 - hop + (hero.moving ? 0 : Math.sin(time * 2.2) * 1.5) + (Math.random() - 0.5) * jit);
     ctx.rotate((hero.moving ? 0.1 : 0) + (hero.mood === 'sad' ? Math.sin(time * 14) * 0.06 * hero.squash : 0) + (hero.swing > 0 ? 0.16 : 0));
     const sq = 1 + hero.squash * 0.14;
     ctx.scale(sq, 1 / sq);
@@ -1299,6 +1316,9 @@
     MAX,
     egg: hero,
     setAnchor() {},
+    pressure(p) {
+      pressure = p;
+    },
     stats: () => ({ slain, met }),
     // a dragon lands in the road for this prompt
     encounter(i) {
