@@ -1,0 +1,42 @@
+[
+  {
+    "text": "Name a yellow fruit",
+    "category": "food",
+    "answers": [
+      {"a": "banana", "pts": 10},
+      {"a": "lemon", "pts": 10},
+      {"a": "pineapple", "pts": 10, "alt": ["ananas"]},
+      {"a": "mango", "pts": 15},
+      {"a": "golden delicious apple", "pts": 15, "alt": ["yellow apple", "golden apple", "apple", "golden delicious"]},
+      {"a": "grapefruit", "pts": 30},
+      {"a": "pear", "pts": 30, "alt": ["yellow pear", "bartlett pear", "asian pear", "nashi pear"]},
+      {"a": "starfruit", "pts": 30, "alt": ["star fruit", "carambola"]},
+      {"a": "plantain", "pts": 30},
+      {"a": "yellow watermelon", "pts": 30},
+      {"a": "honeydew", "pts": 30, "alt": ["honeydew melon", "melon"]},
+      {"a": "papaya", "pts": 30, "alt": ["pawpaw"]},
+      {"a": "apricot", "pts": 30},
+      {"a": "passion fruit", "pts": 60, "alt": ["yellow passion fruit", "passionfruit", "maracuya", "lilikoi"]},
+      {"a": "quince", "pts": 60},
+      {"a": "yellow plum", "pts": 60, "alt": ["mirabelle", "mirabelle plum", "plum"]},
+      {"a": "jackfruit", "pts": 60},
+      {"a": "durian", "pts": 60},
+      {"a": "canary melon", "pts": 60},
+      {"a": "yuzu", "pts": 60},
+      {"a": "loquat", "pts": 60},
+      {"a": "yellow raspberry", "pts": 60, "alt": ["golden raspberry"]},
+      {"a": "citron", "pts": 60},
+      {"a": "golden kiwi", "pts": 60, "alt": ["yellow kiwi", "gold kiwi", "kiwi gold"]},
+      {"a": "pomelo", "pts": 60},
+      {"a": "buddha's hand", "pts": 85, "alt": ["buddhas hand citron", "fingered citron"]},
+      {"a": "ackee", "pts": 85},
+      {"a": "marula", "pts": 85},
+      {"a": "nance", "pts": 85},
+      {"a": "abiu", "pts": 85},
+      {"a": "golden berry", "pts": 85, "alt": ["cape gooseberry", "physalis", "goldenberry", "inca berry", "ground cherry"]},
+      {"a": "egg fruit", "pts": 85, "alt": ["canistel", "eggfruit"]},
+      {"a": "yellow mangosteen", "pts": 85, "alt": ["achachairu", "lemon drop mangosteen"]},
+      {"a": "yellow dragon fruit", "pts": 100, "alt": ["yellow pitaya", "yellow pitahaya", "yellow dragonfruit", "golden dragon fruit"]}
+    ]
+  }
+]

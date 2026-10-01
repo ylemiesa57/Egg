@@ -1,0 +1,14 @@
+{
+  "name": "eggvolution",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Eggvolution — name rare things to roll an egg down a fantastical hill, or march it into battle with dragons.",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed.js",
+    "test": "node --test server/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
